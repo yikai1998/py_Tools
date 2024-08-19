@@ -34,4 +34,45 @@ for name in bill_df.index:
     pay_rev = '应收款 ' if amount > 0 else '应付款 '
     print(f'{name} {pay_rev}{amount}(元)')
 
+----------------------------------------------------
 
+import tkinter as tk
+from tkinter import ttk
+
+# 定义一个函数来添加数据到表格
+def add_row():
+    # 从下拉菜单中获取值
+    values = [cb1.get(), cb2.get(), cb3.get()]
+    # 创建新的行并添加到表格中
+    tree.insert('', 'end', values=values)
+
+# 创建主窗口
+root = tk.Tk()
+root.title("Excel-like Dropdown Multi-Click Box")
+
+# 创建一个Treeview控件来模拟表格
+tree = ttk.Treeview(root, columns=('Column 1', 'Column 2', 'Column 3'), show='headings')
+tree.heading('Column 1', text='Column 1')
+tree.heading('Column 2', text='Column 2')
+tree.heading('Column 3', text='Column 3')
+tree.column('Column 1', width=100)
+tree.column('Column 2', width=100)
+tree.column('Column 3', width=100)
+tree.pack(pady=20)
+
+# 创建三个下拉菜单（Combobox）
+cb1 = ttk.Combobox(root, values=('Option 1-1', 'Option 1-2', 'Option 1-3'))
+cb2 = ttk.Combobox(root, values=('Option 2-1', 'Option 2-2', 'Option 2-3'))
+cb3 = ttk.Combobox(root, values=('Option 3-1', 'Option 3-2', 'Option 3-3'))
+
+# 布局下拉菜单
+cb1.pack(side=tk.LEFT, padx=10)
+cb2.pack(side=tk.LEFT, padx=10)
+cb3.pack(side=tk.LEFT, padx=10)
+
+# 创建一个添加按钮
+add_button = ttk.Button(root, text="Add Row", command=add_row)
+add_button.pack(pady=10)
+
+# 启动事件循环
+root.mainloop()
