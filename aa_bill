@@ -98,17 +98,18 @@ from tkinter import ttk
 
 
 def add_row():
-    values = [cb1.get(), cb2.get(), cb3.get()]
+    values = [cb1.get(), selection_label.cget, cb3.get()]
     tree.insert('', 'end', values=values)
 
 
 class MultiSelectDropdown(tk.Frame):
-    def __init__(self, parent, options, title="Select"):
+    def __init__(self, parent, options, title='无人参与'):
         super().__init__(parent)
         self.options = options
-        self.var = tk.StringVar(value=title)
+        self.button_str = tk.StringVar(value=title)
+        self.var = ''
         self.selected_vars = {option: tk.BooleanVar() for option in options}
-        self.button = tk.Button(self, textvariable=self.var, command=self.show_menu)
+        self.button = tk.Button(self, textvariable=self.button_str, command=self.show_menu)
         self.button.grid(row=3, column=1)
         self.menu_frame = tk.Frame(self)
 
@@ -116,7 +117,7 @@ class MultiSelectDropdown(tk.Frame):
             checkbox = tk.Checkbutton(self.menu_frame, text=option, variable=self.selected_vars[option])
             checkbox.pack(anchor='w')
 
-        self.submit_button = tk.Button(self.menu_frame, text="Apply", command=self.apply_selection)
+        self.submit_button = tk.Button(self.menu_frame, text='确认', command=self.apply_selection)
         self.submit_button.pack()
 
     def show_menu(self):
@@ -127,13 +128,15 @@ class MultiSelectDropdown(tk.Frame):
 
     def apply_selection(self):
         selected_items = [option for option, var in self.selected_vars.items() if var.get()]
-        self.var.set(", ".join(selected_items) if selected_items else "Select")
+        self.var = ", ".join(selected_items) if selected_items else ''
+        self.button_str.set('名单详情' if selected_items else '无人参与')
+        update_selection_label()
         self.menu_frame.grid_remove()
 
 
 def update_selection_label():
-    selected_items = cb2.var.get()
-    selection_label.config(text=f"Selected Items: {selected_items}")
+    selected_items = cb2.var
+    selection_label.config(text=selected_items)
 
 # main structure of windows
 root = tk.Tk()
@@ -164,24 +167,20 @@ scrollbar = ttk.Scrollbar(root, orient="vertical", command=tree.yview)
 scrollbar.grid(row=0, column=3, sticky="nsew", padx=10, pady=10, rowspan=2)
 tree.config(yscrollcommand=scrollbar.set)
 
-# selection_label = tk.Label(root, text="Selected Items: None")
-# selection_label.pack()
-#
-# update_button = tk.Button(root, text="Update Selection", command=update_selection_label)
-# update_button.pack()
-
 # dropdown menu and string-box used for input
-cb1 = ttk.Combobox(root, values=('凯逼', '薛狗', '田东'))
+text1 = tk.Label(root, text='付款人', bg='green', fg='red', font='华文新魏 10 bold').grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
+text2 = tk.Label(root, text='参与人', bg='yellow', fg='blue', font='华文新魏 10 bold').grid(row=2, column=1, sticky="nsew", padx=10, pady=10)
+text3 = tk.Label(root, text='金额', bg='orange', fg='black', font='华文新魏 10 bold').grid(row=2, column=2, sticky="nsew", padx=10, pady=10)
+cb1 = ttk.Combobox(root, values=('凯逼', '薛狗', '田东'), textvariable='hey')
+cb2 = MultiSelectDropdown(parent=root,options=['凯逼', '薛狗', '田东'])
 cb3 = tk.Entry(root)
-cb1.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
-cb3.grid(row=2, column=2, sticky="nsew", padx=10, pady=10)
+cb1.grid(row=3, column=0, sticky="nsew", padx=10, pady=10)
+cb2.grid(row=4, column=1, sticky="nsew", padx=10, pady=10)
+cb3.grid(row=3, column=2, sticky="nsew", padx=10, pady=10)
 
-cb2 = MultiSelectDropdown(parent=root,options=["Option 1", "Option 2", "Option 3", "Option 4", "Option 5"])
-cb2.grid(row=3, column=1, sticky="nsew", padx=10, pady=10)
-selection_label = tk.Label(root, text="Selected Items: None")
-selection_label.grid(row=4, column=1, sticky="nsew", padx=10, pady=10)
-update_button = tk.Button(root, text="Update Selection", command=update_selection_label)
-update_button.grid(row=5, column=1, sticky="nsew", padx=10, pady=10)
+
+selection_label = tk.Label(root, text='')
+selection_label.grid(row=3, column=1, sticky="nsew", padx=10, pady=10)
 
 # add-on button
 add_button = ttk.Button(root, text="Add Row", command=add_row)
@@ -189,4 +188,5 @@ add_button.grid(row=2, column=3, sticky="nsew", padx=10, pady=10)
 
 
 root.mainloop()
+
 
