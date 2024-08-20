@@ -98,12 +98,12 @@ from tkinter import ttk
 
 
 def add_row():
-    values = [cb1.get(), selection_label.cget, cb3.get()]
+    values = [cb1.get(), cb2.var, cb3.get()]
     tree.insert('', 'end', values=values)
 
 
 class MultiSelectDropdown(tk.Frame):
-    def __init__(self, parent, options, title='无人参与'):
+    def __init__(self, parent, options, title='👉无人参与'):
         super().__init__(parent)
         self.options = options
         self.button_str = tk.StringVar(value=title)
@@ -129,7 +129,7 @@ class MultiSelectDropdown(tk.Frame):
     def apply_selection(self):
         selected_items = [option for option, var in self.selected_vars.items() if var.get()]
         self.var = ", ".join(selected_items) if selected_items else ''
-        self.button_str.set('名单详情' if selected_items else '无人参与')
+        self.button_str.set('👉名单详情' if selected_items else '👉无人参与')
         update_selection_label()
         self.menu_frame.grid_remove()
 
@@ -188,5 +188,6 @@ add_button.grid(row=2, column=3, sticky="nsew", padx=10, pady=10)
 
 
 root.mainloop()
+
 
 
