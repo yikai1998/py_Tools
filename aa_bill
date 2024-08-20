@@ -48,7 +48,14 @@ def add_row():
 
 # 创建主窗口
 root = tk.Tk()
-root.title("Excel-like Dropdown Multi-Click Box")
+root.title("AA Bill Tool")
+root.columnconfigure(0, weight=1)
+root.columnconfigure(1, weight=1)
+root.columnconfigure(2, weight=1)
+root.columnconfigure(3, weight=1)
+root.rowconfigure(0, weight=1)
+root.rowconfigure(1, weight=1)
+root.rowconfigure(2, weight=1)
 
 # 创建一个Treeview控件来模拟表格
 tree = ttk.Treeview(root, columns=('Column 1', 'Column 2', 'Column 3'), show='headings')
@@ -58,11 +65,11 @@ tree.heading('Column 3', text='金额')
 tree.column('Column 1', width=100)
 tree.column('Column 2', width=100)
 tree.column('Column 3', width=100)
-tree.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+tree.grid(row=0, column=0, sticky="nsew", padx=10, pady=10, columnspan=3, rowspan=2)
 
 # 创建一个垂直滚动条
 scrollbar = ttk.Scrollbar(root, orient="vertical", command=tree.yview)
-scrollbar.pack(side=tk.RIGHT, fill="y")
+scrollbar.grid(row=0, column=3, sticky="nsew", padx=10, pady=10, rowspan=2)
 
 # 配置Treeview使用滚动条
 tree.config(yscrollcommand=scrollbar.set)
@@ -73,13 +80,78 @@ cb2 = ttk.Combobox(root, values=('凯逼', '薛狗', '田东'))
 cb3 = tk.Entry(root)
 
 # 布局下拉菜单
-cb1.pack(side=tk.LEFT, padx=10)
-cb2.pack(side=tk.LEFT, padx=10)
-cb3.pack(side=tk.LEFT, padx=10)
+cb1.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
+cb2.grid(row=2, column=1, sticky="nsew", padx=10, pady=10)
+cb3.grid(row=2, column=2, sticky="nsew", padx=10, pady=10)
 
 # 创建一个添加按钮
 add_button = ttk.Button(root, text="Add Row", command=add_row)
-add_button.pack(pady=10)
+add_button.grid(row=2, column=3, sticky="nsew", padx=10, pady=10)
 
 # 启动事件循环
 root.mainloop()
+
+----------------------------------------------------------
+
+import tkinter as tk
+from tkinter import ttk
+
+
+class MultiSelectDropdown(tk.Frame):
+    def __init__(self, parent, options, title="Select"):
+        super().__init__(parent)
+
+        self.options = options
+        self.var = tk.StringVar(value=title)
+        self.selected_vars = {option: tk.BooleanVar() for option in options}
+
+        self.button = tk.Button(self, textvariable=self.var, command=self.show_menu)
+        self.button.grid(row=0, column=0)
+
+        self.menu_frame = tk.Frame(self)
+        self.menu_frame.grid(row=1, column=0, sticky="ew")
+        self.menu_frame.grid_remove()
+
+        for option in options:
+            checkbox = tk.Checkbutton(self.menu_frame, text=option, variable=self.selected_vars[option])
+            checkbox.pack(anchor='w')
+
+        self.submit_button = tk.Button(self.menu_frame, text="Apply", command=self.apply_selection)
+        self.submit_button.pack()
+
+    def show_menu(self):
+        if self.menu_frame.winfo_ismapped():
+            self.menu_frame.grid_remove()
+        else:
+            self.menu_frame.grid()
+
+    def apply_selection(self):
+        selected_items = [option for option, var in self.selected_vars.items() if var.get()]
+        self.var.set(", ".join(selected_items) if selected_items else "Select")
+        self.menu_frame.grid_remove()
+
+
+class App:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Multi-Select Dropdown Example")
+
+        self.multi_select_dropdown = MultiSelectDropdown(self.root,
+                                                         ["Option 1", "Option 2", "Option 3", "Option 4", "Option 5"])
+        self.multi_select_dropdown.pack(pady=20)
+
+        self.selection_label = tk.Label(self.root, text="Selected Items: None")
+        self.selection_label.pack()
+
+        self.update_button = tk.Button(self.root, text="Update Selection", command=self.update_selection_label)
+        self.update_button.pack()
+
+    def update_selection_label(self):
+        selected_items = self.multi_select_dropdown.var.get()
+        self.selection_label.config(text=f"Selected Items: {selected_items}")
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = App(root)
+    root.mainloop()
