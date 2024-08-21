@@ -1,11 +1,24 @@
 import tkinter as tk
+from tkinter import messagebox
 from tkinter import ttk
 import pandas as pd
 import numpy as np
 
 
+def validate_numeric_input(P):
+    if P == '':
+        return True
+    if all(char in '0123456789.' for char in P):
+        if P.count('.') <= 1:
+            return True
+    return False
+
+
 def add_row():
     values = [cb1.get(), cb2.var, cb3.get()]
+    if any([values[0]=='', values[1]=='', values[2]=='']):
+        messagebox.showerror("Invalid Input", "Please enter valid info!")
+        return 0
     tree.insert('', 'end', values=values)
 
 
@@ -33,7 +46,7 @@ def calculate():
     for name in bill_df.index:
         amount = round(bill_df.loc[bill_df.index == name, 'net_off'].values[0], 2)
         pay_rev = '应收款 ' if amount > 0 else '应付款 '
-        print(f'{name} {pay_rev}{amount}(元)')
+        print(f'{name} {pay_rev}{abs(amount)}(元)')
 
 
 class MultiSelectDropdown(tk.Frame):
@@ -88,7 +101,7 @@ root.rowconfigure(5)
 
 # data table
 tree = ttk.Treeview(root, columns=('Column 1', 'Column 2', 'Column 3'), show='headings')
-tree.heading('Column 1', text='付款人')
+tree.heading('Column 1', text='付款人', anchor='e')
 tree.heading('Column 2', text='参与人')
 tree.heading('Column 3', text='金额')
 tree.column('Column 1', width=100)
@@ -104,12 +117,13 @@ scrollbar.grid(row=0, column=3, sticky="nsew", padx=10, pady=10, rowspan=2)
 tree.config(yscrollcommand=scrollbar.set)
 
 # dropdown menu and string-box used for input
-text1 = tk.Label(root, text='付款人', bg='green', fg='red', font='华文新魏 10 bold').grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
-text2 = tk.Label(root, text='参与人', bg='yellow', fg='blue', font='华文新魏 10 bold').grid(row=2, column=1, sticky="nsew", padx=10, pady=10)
-text3 = tk.Label(root, text='金额', bg='orange', fg='black', font='华文新魏 10 bold').grid(row=2, column=2, sticky="nsew", padx=10, pady=10)
+text1 = tk.Label(root, text='付款人', font='华文新魏 13 bold').grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
+text2 = tk.Label(root, text='参与人', font='华文新魏 13 bold').grid(row=2, column=1, sticky="nsew", padx=10, pady=10)
+text3 = tk.Label(root, text='金额', font='华文新魏 13 bold').grid(row=2, column=2, sticky="nsew", padx=10, pady=10)
 cb1 = ttk.Combobox(root, values=people_list, textvariable='hey')
 cb2 = MultiSelectDropdown(parent=root,options=people_list)
-cb3 = tk.Entry(root)
+vcmd = (root.register(validate_numeric_input), '%P')
+cb3 = tk.Entry(root, validate='key', validatecommand=vcmd)
 cb1.grid(row=3, column=0, sticky="nsew", padx=10, pady=10)
 cb2.grid(row=4, column=1, sticky="nsew", padx=10, pady=10)
 cb3.grid(row=3, column=2, sticky="nsew", padx=10, pady=10)
