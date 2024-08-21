@@ -102,6 +102,11 @@ def add_row():
     tree.insert('', 'end', values=values)
 
 
+def calculate():
+    bill = [tree.item(r, 'values') for r in tree.get_children()]
+    print(bill)
+
+
 class MultiSelectDropdown(tk.Frame):
     def __init__(self, parent, options, title='👉无人参与'):
         super().__init__(parent)
@@ -162,6 +167,7 @@ tree.column('Column 2', width=100)
 tree.column('Column 3', width=100)
 tree.grid(row=0, column=0, sticky="nsew", padx=10, pady=10, columnspan=3, rowspan=2)
 
+
 # scroll bar
 scrollbar = ttk.Scrollbar(root, orient="vertical", command=tree.yview)
 scrollbar.grid(row=0, column=3, sticky="nsew", padx=10, pady=10, rowspan=2)
@@ -186,8 +192,11 @@ selection_label.grid(row=3, column=1, sticky="nsew", padx=10, pady=10)
 add_button = ttk.Button(root, text="Add Row", command=add_row)
 add_button.grid(row=2, column=3, sticky="nsew", padx=10, pady=10)
 
+# calculate button
+calculate_button = ttk.Button(root, text="Generate Bill", command=calculate)
+calculate_button.grid(row=3, column=3, sticky="nsew", padx=10, pady=10)
+
 
 root.mainloop()
-
 
 
