@@ -1,100 +1,7 @@
+import tkinter as tk
+from tkinter import ttk
 import pandas as pd
 import numpy as np
-
-number = int(input('>> 输入总人数：'))
-people_list = []
-for i in range(number):
-    name = input(f'>> 输入第{i+1}位姓名：')
-    people_list.append(name)
-
-print(f'\n人员名单：{people_list}')
-bill_df = pd.DataFrame(data=np.array([[0.0] * number] * number), columns=people_list, index=people_list)
-while True:
-    payer = input('>> 请选择付款人：')
-    fee = float(input('>> 请输入总金额：'))
-    member = input('>> 请输入所有受益人，以逗号,分隔，不能有空格：')
-    member = member.split(',')
-    aa_amount = round(fee/len(member), 2)
-    bill_df.loc[bill_df.index==payer] += aa_amount
-    c = input('>> 输入c键以退出，输入其他任意键以继续')
-    if c == 'c':
-        break
-
-for i in bill_df.index:
-    bill_df.loc[i, i] = 0
-
-bill_df['total_receive'] = bill_df.sum(axis=1)
-bill_df['total_pay'] = bill_df.sum(axis=0)
-bill_df['net_off'] = bill_df['total_receive'] - bill_df['total_pay']
-print(bill_df)
-
-print('>> 结论：')
-for name in bill_df.index:
-    amount = round(bill_df.loc[bill_df.index==name, 'net_off'].values[0], 2)
-    pay_rev = '应收款 ' if amount > 0 else '应付款 '
-    print(f'{name} {pay_rev}{amount}(元)')
-
-----------------------------------------------------
-
-import tkinter as tk
-from tkinter import ttk
-
-# 定义一个函数来添加数据到表格
-def add_row():
-    # 从下拉菜单中获取值
-    values = [cb1.get(), cb2.get(), cb3.get()]
-    # 创建新的行并添加到表格中
-    tree.insert('', 'end', values=values)
-
-# 创建主窗口
-root = tk.Tk()
-root.title("AA Bill Tool")
-root.columnconfigure(0, weight=1)
-root.columnconfigure(1, weight=1)
-root.columnconfigure(2, weight=1)
-root.columnconfigure(3, weight=1)
-root.rowconfigure(0, weight=1)
-root.rowconfigure(1, weight=1)
-root.rowconfigure(2, weight=1)
-
-# 创建一个Treeview控件来模拟表格
-tree = ttk.Treeview(root, columns=('Column 1', 'Column 2', 'Column 3'), show='headings')
-tree.heading('Column 1', text='付款人')
-tree.heading('Column 2', text='参与人')
-tree.heading('Column 3', text='金额')
-tree.column('Column 1', width=100)
-tree.column('Column 2', width=100)
-tree.column('Column 3', width=100)
-tree.grid(row=0, column=0, sticky="nsew", padx=10, pady=10, columnspan=3, rowspan=2)
-
-# 创建一个垂直滚动条
-scrollbar = ttk.Scrollbar(root, orient="vertical", command=tree.yview)
-scrollbar.grid(row=0, column=3, sticky="nsew", padx=10, pady=10, rowspan=2)
-
-# 配置Treeview使用滚动条
-tree.config(yscrollcommand=scrollbar.set)
-
-# 创建三个下拉菜单（Combobox）
-cb1 = ttk.Combobox(root, values=('凯逼', '薛狗', '田东'))
-cb2 = ttk.Combobox(root, values=('凯逼', '薛狗', '田东'))
-cb3 = tk.Entry(root)
-
-# 布局下拉菜单
-cb1.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
-cb2.grid(row=2, column=1, sticky="nsew", padx=10, pady=10)
-cb3.grid(row=2, column=2, sticky="nsew", padx=10, pady=10)
-
-# 创建一个添加按钮
-add_button = ttk.Button(root, text="Add Row", command=add_row)
-add_button.grid(row=2, column=3, sticky="nsew", padx=10, pady=10)
-
-# 启动事件循环
-root.mainloop()
-
-----------------------------------------------------------
-
-import tkinter as tk
-from tkinter import ttk
 
 
 def add_row():
@@ -103,8 +10,30 @@ def add_row():
 
 
 def calculate():
-    bill = [tree.item(r, 'values') for r in tree.get_children()]
-    print(bill)
+    bill_raw = [tree.item(r, 'values') for r in tree.get_children()]
+    print(bill_raw)
+
+    number = len(people_list)
+    bill_df = pd.DataFrame(data=np.array([[0.0] * number] * number), columns=people_list, index=people_list)
+    for event in bill_raw:
+        payer = event[0]
+        member = event[1].split(', ')
+        fee = float(event[2])
+        aa_amount = round(fee / len(member), 2)
+        for m in member:
+            bill_df.loc[bill_df.index == payer, m] += aa_amount
+    for i in bill_df.index:
+        bill_df.loc[i, i] = 0
+    bill_df['total_receive'] = bill_df.sum(axis=1)
+    bill_df['total_pay'] = bill_df.sum(axis=0)
+    bill_df['net_off'] = bill_df['total_receive'] - bill_df['total_pay']
+    print(bill_df)
+
+    print('>> 结论：')
+    for name in bill_df.index:
+        amount = round(bill_df.loc[bill_df.index == name, 'net_off'].values[0], 2)
+        pay_rev = '应收款 ' if amount > 0 else '应付款 '
+        print(f'{name} {pay_rev}{amount}(元)')
 
 
 class MultiSelectDropdown(tk.Frame):
@@ -167,6 +96,7 @@ tree.column('Column 2', width=100)
 tree.column('Column 3', width=100)
 tree.grid(row=0, column=0, sticky="nsew", padx=10, pady=10, columnspan=3, rowspan=2)
 
+people_list = ['凯逼', '薛狗', '田东']
 
 # scroll bar
 scrollbar = ttk.Scrollbar(root, orient="vertical", command=tree.yview)
@@ -177,8 +107,8 @@ tree.config(yscrollcommand=scrollbar.set)
 text1 = tk.Label(root, text='付款人', bg='green', fg='red', font='华文新魏 10 bold').grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
 text2 = tk.Label(root, text='参与人', bg='yellow', fg='blue', font='华文新魏 10 bold').grid(row=2, column=1, sticky="nsew", padx=10, pady=10)
 text3 = tk.Label(root, text='金额', bg='orange', fg='black', font='华文新魏 10 bold').grid(row=2, column=2, sticky="nsew", padx=10, pady=10)
-cb1 = ttk.Combobox(root, values=('凯逼', '薛狗', '田东'), textvariable='hey')
-cb2 = MultiSelectDropdown(parent=root,options=['凯逼', '薛狗', '田东'])
+cb1 = ttk.Combobox(root, values=people_list, textvariable='hey')
+cb2 = MultiSelectDropdown(parent=root,options=people_list)
 cb3 = tk.Entry(root)
 cb1.grid(row=3, column=0, sticky="nsew", padx=10, pady=10)
 cb2.grid(row=4, column=1, sticky="nsew", padx=10, pady=10)
@@ -198,5 +128,3 @@ calculate_button.grid(row=3, column=3, sticky="nsew", padx=10, pady=10)
 
 
 root.mainloop()
-
-
