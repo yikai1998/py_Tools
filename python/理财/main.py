@@ -14,6 +14,30 @@ import os
 import matplotlib.pyplot as plt
 
 
+HOLD_COLUMNS = ["序号", "股票代码", "股票名称", "占净值比例", "持股数", "持仓市值", "季度"]
+
+
+def empty_hold_df():
+    return pd.DataFrame(columns=HOLD_COLUMNS)
+
+
+def extract_js_object(txt: str):
+    """
+    从东方财富返回的 var apidata={...}; 中提取 {...}
+    """
+    if not txt:
+        raise ValueError("东方财富返回空内容")
+
+    left = txt.find("{")
+    right = txt.rfind("}")
+
+    if left == -1 or right == -1 or right <= left:
+        preview = txt[:500].replace("\n", "\\n")
+        raise ValueError(f"返回内容中找不到有效 JSON/JS 对象，前500字符：{preview}")
+
+    return txt[left:right + 1]
+
+
 def get_fund_code(path: str = "基金代码名单_持仓.txt"):
     """
     功能: 获取准备好的基金名单，每行一个。文件允许有多余空白，会自动去掉；代码空则退出。
@@ -54,39 +78,73 @@ def basic_profile(fund_code: str):
 
 def hold_base(fund_code: str, name: str):
     """
-    功能: 获取基金最近两个年度（含今年和去年）已披露的最新季度的股票重仓持仓数据。
-         会自动兼容，AkShare官方接口失效时抓取东方财富原始页面（自动调用下方的manual_parse字符串解析），支持通用公募基金。
-    参数: fund_code 文本 基金代码，如 000001、161725 等。
-    返回: DataFrame
+    功能: 获取基金最近两个年度已披露的最新季度股票持仓数据。
     """
     print(f"正在拉取基金 {fund_code} 近两年度持仓 ……")
+
+    fund_code = str(fund_code).zfill(6)
     now = datetime.datetime.now()
     years = [str(now.year - 1), str(now.year)]
+
     big = pd.DataFrame()
 
     for y in years:
+        r = pd.DataFrame()
+
         try:
-            r = ak.fund_portfolio_hold_em(fund_code, y)
+            r = ak.fund_portfolio_hold_em(symbol=fund_code, date=y)
         except Exception as e:
-            print(f"[akshare 接口失败] {e}，尝试自解析……")
-            r = manual_parse(fund_code, y)  # 列名对不上 -> 自己手搓解析
-        if r.empty:
-            print(f"代码{fund_code} 在 {y} 年暂未披露持仓")
+            print(f"[akshare 接口失败] {fund_code} {y}: {e}，尝试自解析……")
+
+            try:
+                r = manual_parse(fund_code, y)
+            except Exception as e2:
+                print(f"[自解析也失败] {fund_code} {y}: {e2}")
+                r = empty_hold_df()
+
+        if r is None or r.empty:
+            print(f"代码 {fund_code} 在 {y} 年暂未披露持仓")
             continue
+
         big = pd.concat([big, r], ignore_index=True)
+
+        time.sleep(0.8)
 
     if big.empty:
         return pd.DataFrame(columns=["股票代码", "股票名称", "占净值比例", "持股数", "持仓市值", "季度"])
 
-    big["std_q"] = (big["季度"].str.extract(r"(\d{4})[年Qq]([1234])")[0] + "Q" + big["季度"].str.extract(r"(\d{4})[年Qq]([1234])")[1]).apply(lambda x: pd.Period(x, freq="Q"))  # 生成可排序的“标准季度”列
-    latest_q = big["std_q"].max()  # 取最新季度
-    big = big[big["std_q"] == latest_q].drop(columns=["std_q"])
+    # 提取标准季度
+    q_extract = big["季度"].astype(str).str.extract(r"(\d{4})[年Qq]?第?([1234])?[季度]?")
+
+    # 上面的正则可能对某些格式不稳，所以再补一版
+    bad = q_extract[0].isna() | q_extract[1].isna()
+    if bad.any():
+        q_extract2 = big.loc[bad, "季度"].astype(str).str.extract(r"(\d{4}).*?([1234])")
+        q_extract.loc[bad, 0] = q_extract2[0]
+        q_extract.loc[bad, 1] = q_extract2[1]
+
+    big["std_q_text"] = q_extract[0] + "Q" + q_extract[1]
+    big["std_q"] = big["std_q_text"].apply(
+        lambda x: pd.Period(x, freq="Q") if isinstance(x, str) and re.match(r"\d{4}Q[1-4]", x) else pd.NaT
+    )
+
+    big = big.dropna(subset=["std_q"])
+
+    if big.empty:
+        print(f"代码 {fund_code} 未能识别有效季度")
+        return pd.DataFrame(columns=["股票代码", "股票名称", "占净值比例", "持股数", "持仓市值", "季度"])
+
+    latest_q = big["std_q"].max()
+    big = big[big["std_q"] == latest_q].drop(columns=["std_q", "std_q_text"])
+
     big["占净值比例"] = pd.to_numeric(big["占净值比例"], errors="coerce")
     big.sort_values(by="占净值比例", inplace=True, ascending=False)
     big.reset_index(drop=True, inplace=True)
+
     folder = f"{name}_基金代码{fund_code}"
     os.makedirs(folder, exist_ok=True)
-    filename = os.path.join(folder, f"最新持仓.csv")
+
+    filename = os.path.join(folder, "最新持仓.csv")
     big.to_csv(path_or_buf=filename, encoding="utf-8", sep="\t", index=False)
 
     return big
@@ -94,36 +152,146 @@ def hold_base(fund_code: str, name: str):
 
 def manual_parse(symbol: str, year: str):
     """
-    功能: 用于从东方财富F10（原网页）直接解析某基金某年度的全部历史持仓信息。
-         这个函数一般作为hold_base的辅助后备方案，用于当 AkShare接口出错或字段结构不兼容时的爬虫。
-    参数: symbol 文本 基金代码，如 000001、161725 等。year 文本 年份字符串，如 2023 等。
-    返回: dataFrame
+    功能: 用于从东方财富F10直接解析某基金某年度的全部历史持仓信息。
+    参数: symbol 基金代码，如 000001、161725 等。year 年份字符串，如 2023。
+    返回: DataFrame
     """
+    symbol = str(symbol).zfill(6)
+    year = str(year)
+
     url = "https://fundf10.eastmoney.com/FundArchivesDatas.aspx"
-    params = {"type": "jjcc", "code": symbol, "topline": 10000, "year": year, "month": "", "rt": "0.913877030254846"}
-    txt = requests.get(url=url, params=params, timeout=10).text
-    data = dj.decode(txt[txt.find("{"): -1])
-    if not data.get("content", "").strip():
-        return pd.DataFrame()
 
-    soup = bs4.BeautifulSoup(data["content"], "lxml")
-    heads = [h4.text.split("\xa0\xa0")[1] for h4 in soup.find_all("h4", class_="t")]  # <h4 class="t">2024Q1</h4>“分隔符”, \xa0\xa0“不间断空格”
-    big = pd.DataFrame()
+    params = {
+        "type": "jjcc",
+        "code": symbol,
+        "topline": "10000",
+        "year": year,
+        "month": "",
+        "rt": str(time.time()),
+    }
 
-    for q, html_table in enumerate(pd.read_html(io.StringIO(data["content"]), converters={"股票代码": str})):
-        # 把字符串“伪装”成类文件对象，让 pandas 走“内存文本”分支，一次性读表。强制将股票代码当作str看待
-        # 把所有列名里的空格、%、全角括号全干掉，方便后面模糊匹配
-        html_table.columns = [re.sub(r"[ %　()（）]", "", c.strip()) for c in html_table.columns]
-        ratio_col = next((c for c in html_table.columns if "占净值" in c), None)  # “找第一个满足条件的元素”的惯用写法，找不到就 None
-        if ratio_col is None:
-            html_table["占净值比例"] = pd.NA
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/126.0 Safari/537.36"
+        ),
+        "Referer": f"https://fundf10.eastmoney.com/ccmx_{symbol}.html",
+        "Accept": "*/*",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    }
+
+    resp = requests.get(url=url, params=params, headers=headers, timeout=15)
+
+    if resp.status_code != 200:
+        raise RuntimeError(f"HTTP状态异常：{resp.status_code}，url={resp.url}")
+
+    txt = resp.text.strip()
+
+    # 调试用，出问题时很有用
+    # print("URL:", resp.url)
+    # print("TEXT_HEAD:", txt[:500])
+
+    js_text = extract_js_object(txt)
+
+    try:
+        data = dj.decode(js_text)
+    except Exception as e:
+        preview = js_text[:500].replace("\n", "\\n")
+        raise ValueError(f"demjson3解析失败：{e}；待解析内容前500字符：{preview}") from e
+
+    content = data.get("content", "")
+
+    if not content or not str(content).strip():
+        return empty_hold_df()
+
+    soup = bs4.BeautifulSoup(content, "lxml")
+
+    heads = []
+    for h4 in soup.find_all("h4", class_="t"):
+        text = h4.get_text(strip=True)
+        if "\xa0\xa0" in text:
+            heads.append(text.split("\xa0\xa0")[-1])
         else:
-            html_table["占净值比例"] = html_table[ratio_col].astype(str).str.replace("%", "", regex=False)
-        # A new DataFrame with the new columns in addition to all the existing columns.
-        sub = html_table.assign(季度=heads[q])
-        big = pd.concat([big, sub], ignore_index=True)
+            heads.append(text)
 
-    return big
+    try:
+        tables = pd.read_html(io.StringIO(content), converters={"股票代码": str})
+    except ValueError:
+        return empty_hold_df()
+
+    if not tables:
+        return empty_hold_df()
+
+    result_list = []
+
+    for idx, html_table in enumerate(tables):
+        html_table = html_table.copy()
+
+        # 统一列名：去掉空格、百分号、括号等
+        html_table.columns = [
+            re.sub(r"[ %　()（）]", "", str(c).strip())
+            for c in html_table.columns
+        ]
+
+        # 删除无用列
+        for col in ["相关资讯"]:
+            if col in html_table.columns:
+                html_table.drop(columns=[col], inplace=True)
+
+        # 模糊寻找各列
+        code_col = next((c for c in html_table.columns if "股票代码" in c), None)
+        name_col = next((c for c in html_table.columns if "股票名称" in c), None)
+        ratio_col = next((c for c in html_table.columns if "占净值" in c), None)
+        shares_col = next((c for c in html_table.columns if "持股数" in c), None)
+        value_col = next((c for c in html_table.columns if "持仓市值" in c), None)
+
+        # 不是持仓表就跳过
+        if code_col is None or name_col is None:
+            continue
+
+        sub = pd.DataFrame()
+
+        sub["股票代码"] = html_table[code_col].astype(str).str.zfill(6)
+        sub["股票名称"] = html_table[name_col].astype(str)
+
+        if ratio_col is not None:
+            sub["占净值比例"] = (
+                html_table[ratio_col]
+                .astype(str)
+                .str.replace("%", "", regex=False)
+                .str.strip()
+            )
+        else:
+            sub["占净值比例"] = pd.NA
+
+        if shares_col is not None:
+            sub["持股数"] = html_table[shares_col]
+        else:
+            sub["持股数"] = pd.NA
+
+        if value_col is not None:
+            sub["持仓市值"] = html_table[value_col]
+        else:
+            sub["持仓市值"] = pd.NA
+
+        quarter = heads[idx] if idx < len(heads) else f"{year}年未知季度"
+        sub["季度"] = quarter
+
+        result_list.append(sub)
+
+    if not result_list:
+        return empty_hold_df()
+
+    big = pd.concat(result_list, ignore_index=True)
+
+    big["占净值比例"] = pd.to_numeric(big["占净值比例"], errors="coerce")
+    big["持股数"] = pd.to_numeric(big["持股数"], errors="coerce")
+    big["持仓市值"] = pd.to_numeric(big["持仓市值"], errors="coerce")
+
+    big.insert(0, "序号", range(1, len(big) + 1))
+
+    return big[HOLD_COLUMNS]
 
 
 def fetch_all_nav(fund_code: str):
@@ -159,8 +327,9 @@ def fetch_all_nav(fund_code: str):
 
     df["净值日期"] = pd.to_datetime(df["净值日期"], errors="coerce")
     df["单位净值"] = pd.to_numeric(df["单位净值"], errors="coerce")
+    df["累计净值"] = pd.to_numeric(df["累计净值"], errors="coerce")
     df["日增长率"] = pd.to_numeric(df["日增长率"], errors="coerce")
-    df = df.dropna(subset=["净值日期", "单位净值"])
+    df = df.dropna(subset=["净值日期", "单位净值", "累计净值"])
     df["净值日期"] = pd.to_datetime(df["净值日期"])
     latest_date = df["净值日期"].max()
     print(f"数据已拉取，最新净值日期：{latest_date.date()}")
@@ -195,8 +364,8 @@ def fetch_all_nav(fund_code: str):
     df["基金代码"] = fund_code
     df.sort_values(by="净值日期", inplace=True)
     df.reset_index(drop=True, inplace=True)
-    df["MA20"] = df["单位净值"].rolling(20).mean()
-    df["MA120"] = df["单位净值"].rolling(120).mean()
+    df["MA20"] = df["累计净值"].rolling(20).mean()
+    df["MA120"] = df["累计净值"].rolling(120).mean()
     pct_list_all = [np.nan]
     for i in range(1, len(df)):
         history = df["累计净值"].iloc[:i]
@@ -205,8 +374,9 @@ def fetch_all_nav(fund_code: str):
 
     df["低于历史价值百分比"] = pct_list_all
     # 动态阈值：随过去xx天滚动，默认从低到高排(从高估到低估)，低于历史价值百分比的第xx%分位值
-    df["高估边界"] = df["低于历史价值百分比"].rolling(750).quantile(0.1).shift(1)
-    df["低估边界"] = df["低于历史价值百分比"].rolling(750).quantile(0.9).shift(1)
+    n = min(750, len(df)-2)  # 最多看 750 条；不够 750 时，有多少看多少；但少于 250 条时不给结果。一旦超过 250 条，会使用当时窗口里的全部有效数据。
+    df["高估边界"] = df["低于历史价值百分比"].rolling(n, min_periods=250).quantile(0.1).shift(1)
+    df["低估边界"] = df["低于历史价值百分比"].rolling(n, min_periods=250).quantile(0.9).shift(1)
 
     pct_list_60 = [None] * 60
     for i in range(60, len(df)):
@@ -280,7 +450,7 @@ def nav_signal_analysis(df, fund_code):
         rate = df.loc[i, "日增长率"]
         up_extreme = df.loc[i, "日增长率250日极端涨幅"]
         down_extreme = df.loc[i, "日增长率250日极端跌幅"]
-        price = df.loc[i, "单位净值"]
+        price = df.loc[i, "累计净值"]
         ma20 = df.loc[i, "MA20"]
         ma120 = df.loc[i, "MA120"]
         p_under_total = df.loc[i, "低于历史价值百分比"]
@@ -377,8 +547,8 @@ def plot_fund_dashboard(df, fund_code):
     """
     df_plot = df.sort_values("净值日期")
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(nrows=2, ncols=2, figsize=(22, 8), constrained_layout=True)
-    # 历史: 单位净值
-    ax1.plot(df_plot["净值日期"], df_plot["单位净值"], label="Unit Net Value", color="blue", linewidth=2)
+    # 历史: 累计净值
+    ax1.plot(df_plot["净值日期"], df_plot["累计净值"], label="Unit Net Value", color="blue", linewidth=2)
     ax1.set_xlabel("Date")
     ax1.set_ylabel("Unit Net Value")
     ax1.set_title("Full History Trend of Unit Net Value")
@@ -396,9 +566,9 @@ def plot_fund_dashboard(df, fund_code):
     ax2.margins(y=0.1)
     ax2.legend(loc="lower right", fontsize=8, framealpha=0.8)
     ax2.invert_yaxis()
-    # 过去250天: 单位净值
+    # 过去250天: 累计净值
     df_plot = df_plot.tail(250)
-    ax3.plot(df_plot["净值日期"], df_plot["单位净值"], label="Unit Net Value", color="blue", linewidth=2)
+    ax3.plot(df_plot["净值日期"], df_plot["累计净值"], label="Unit Net Value", color="blue", linewidth=2)
     ax3.set_xlabel("Date")
     ax3.set_ylabel("Unit Net Value")
     ax3.set_title("Past 250 Days Trend of Unit Net Value")
@@ -414,7 +584,7 @@ def plot_fund_dashboard(df, fund_code):
     ax4.set_title("Over/Under-Value Boundary")
     ax4.tick_params(axis="x", rotation=40)
     ax4.margins(y=0.1)
-    ax4.legend(loc="lower right", fontsize=8, framealpha=0.8)
+    # ax4.legend(loc="lower right", fontsize=8, framealpha=0.8)
     ax4.invert_yaxis()
     fund_name = df["基金名称"].iloc[0]
     folder = f"{fund_name}_基金代码{fund_code}"
